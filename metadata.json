@@ -1,0 +1,5 @@
+{
+  "name": "RD Transaction Manager",
+  "description": "A comprehensive application for managing Recurring Deposit (RD) transactions, featuring real-time data synchronization, automated calculations, and account search.",
+  "requestFramePermissions": []
+}

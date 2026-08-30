@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: accounts
+    // Fields: accountNo, name, denomination, monthPaidUpto, nextDueDate, mobile, rd_ni, photoURL, manualReport
+    //
+    // Collection: settings
+    // Document: appState
+    // Fields: lastActiveAccountId, updatedAt
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "webdev3775@gmail.com" || 
+         request.auth.token.email == "gamingvlogs3775@gmail.com");
+    }
+
+    function isValidAccount(data) {
+      return data.accountNo is string && data.accountNo.size() > 0 && data.accountNo.size() < 50 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.denomination is number && data.denomination >= 0;
+    }
+
+    match /accounts/{accountId} {
+      allow read: if isAuthenticated();
+      // Allow create and update for authenticated users to facilitate data import and manual updates
+      allow create: if isAuthenticated() && isValidAccount(request.resource.data);
+      allow update: if isAuthenticated() && isValidAccount(request.resource.data);
+      // Delete is restricted to admins (Reset Database feature)
+      allow delete: if isAdmin();
+    }
+
+    match /photos/{accountNo} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /settings/appState {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

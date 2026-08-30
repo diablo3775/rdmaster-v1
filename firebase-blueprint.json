@@ -1,0 +1,52 @@
+{
+  "entities": {
+    "account": {
+      "title": "RD Account",
+      "description": "Recurring Deposit Account details",
+      "type": "object",
+      "properties": {
+        "accountNo": { "type": "string", "description": "Full account number" },
+        "name": { "type": "string", "description": "Account holder name" },
+        "denomination": { "type": "number", "description": "Monthly deposit amount" },
+        "monthPaidUpto": { "type": "number", "description": "Total months paid so far" },
+        "nextDueDate": { "type": "string", "format": "date", "description": "Next installment due date" },
+        "mobile": { "type": "string", "description": "Linked mobile number" },
+        "rd_ni": { "type": "number", "description": "Number of installments (manual update)" }
+      },
+      "required": ["accountNo", "name", "denomination"]
+    },
+    "appState": {
+      "title": "Application State",
+      "description": "Stores the current working session state",
+      "type": "object",
+      "properties": {
+        "lastActiveAccountId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "photo": {
+      "title": "Account Photo",
+      "description": "Stores the photo for an account, linked by accountNo",
+      "type": "object",
+      "properties": {
+        "photoURL": { "type": "string", "description": "Base64 encoded image" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["photoURL"]
+    }
+  },
+  "firestore": {
+    "/accounts/{accountId}": {
+      "schema": "account",
+      "description": "Collection of RD accounts"
+    },
+    "/photos/{accountNo}": {
+      "schema": "photo",
+      "description": "Collection of account photos, indexed by account number"
+    },
+    "/settings/appState": {
+      "schema": "appState",
+      "description": "Global application state for 'Continue' mode"
+    }
+  }
+}
