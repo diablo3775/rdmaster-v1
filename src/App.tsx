@@ -1136,20 +1136,20 @@ function RDApp() {
             key="main"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-4 max-w-[1400px] mx-auto"
+            className="p-2 sm:p-4 max-w-[1400px] mx-auto"
           >
             {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 text-white border-b border-white/20 pb-4">
-              <div className="flex items-center gap-4">
-                <button onClick={() => setMode('START')} className="hover:text-blue-200"><ArrowLeft /></button>
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tighter">R D Transactions</h1>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 text-white border-b border-white/20 pb-3 sm:pb-4">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <button onClick={() => setMode('START')} className="hover:text-blue-200"><ArrowLeft size={20} /></button>
+                <h1 className="text-lg sm:text-2xl font-bold tracking-tighter whitespace-nowrap">R D Transactions</h1>
               </div>
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 text-xs sm:text-sm w-full sm:w-auto justify-between sm:justify-end">
                 <button
                   onClick={() => setIsDefaulterModalOpen(true)}
-                  className="bg-[#ffe79a] text-[#002f52] px-2.5 py-1 rounded font-bold hover:bg-[#ffde7a] flex items-center gap-1 shadow-sm transition-colors text-xs"
+                  className="bg-[#ffe79a] text-[#002f52] px-2 py-1 rounded font-bold hover:bg-[#ffde7a] flex items-center gap-1 shadow-sm transition-colors text-[11px] sm:text-xs"
                 >
-                  <Calendar size={13} />
+                  <Calendar size={12} />
                   Defaulters Paid-Date
                 </button>
                 <button
@@ -1157,27 +1157,27 @@ function RDApp() {
                     fetchPhotoIndex();
                     setIsNoPhotosModalOpen(true);
                   }}
-                  className="bg-[#fed7d7] text-[#742a2a] px-2.5 py-1 rounded font-bold hover:bg-[#fca5a5] flex items-center gap-1 shadow-sm transition-colors text-xs"
+                  className="bg-[#fed7d7] text-[#742a2a] px-2 py-1 rounded font-bold hover:bg-[#fca5a5] flex items-center gap-1 shadow-sm transition-colors text-[11px] sm:text-xs"
                 >
-                  <ImageOff size={13} />
-                  No Photos List ({accounts.filter(a => !photoAccountNos.has(a.accountNo)).length})
+                  <ImageOff size={12} />
+                  No Photos ({accounts.filter(a => !photoAccountNos.has(a.accountNo)).length})
                 </button>
-                <span className="opacity-80 hidden md:inline">{new Date().toLocaleString()}</span>
-                <div className="flex items-center gap-2 bg-white/10 px-3 py-1 rounded">
-                  <UserIcon size={14} />
-                  <span className="truncate max-w-[150px]">{user.email}</span>
+                <span className="opacity-80 hidden md:inline text-xs">{new Date().toLocaleString()}</span>
+                <div className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded text-xs">
+                  <UserIcon size={12} />
+                  <span className="truncate max-w-[100px] sm:max-w-[150px]">{user.email}</span>
                 </div>
-                <button onClick={handleLogout} className="hover:text-red-300 ml-auto sm:ml-0"><LogOut size={18} /></button>
+                <button onClick={handleLogout} title="Logout" className="hover:text-red-300 p-1"><LogOut size={16} /></button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
               {/* Left Panel: Account List */}
-              <div className={cn("space-y-6 transition-all duration-300", showSummary ? "lg:col-span-10" : "lg:col-span-12")}>
+              <div className={cn("space-y-4 sm:space-y-6 transition-all duration-300", showSummary ? "lg:col-span-10" : "lg:col-span-12")}>
                 <div className="bg-white/95 backdrop-blur shadow-[4px_4px_0px_#000] overflow-hidden">
-                  <div className="bg-[#004a75] text-white p-3 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                      <span className="font-bold">Deposit Accounts List</span>
+                  <div className="bg-[#004a75] text-white p-2.5 sm:p-3 flex justify-between items-center">
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <span className="font-bold text-xs sm:text-sm">Deposit Accounts List</span>
                       <button 
                         onClick={() => {
                           setConfirmModal({
@@ -1197,7 +1197,7 @@ function RDApp() {
                     </div>
                   </div>
                   
-                  <div ref={tableContainerRef} className="overflow-auto max-h-[195px] border-b border-gray-200">
+                  <div ref={tableContainerRef} className="overflow-auto max-h-[195px] sm:max-h-[220px] border-b border-gray-200">
                     <table className="w-full text-sm text-left border-collapse">
                       <thead className="bg-gray-100 sticky top-0 z-10 whitespace-nowrap shadow-xs">
                         <tr className="h-8">
@@ -1428,39 +1428,40 @@ function RDApp() {
                 </div>
 
                 {/* Bottom Controls */}
-                <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
-                  <div className="flex items-center gap-2 bg-white p-2 border-2 border-black shadow-[2px_2px_0px_#000] w-full sm:w-auto">
+                <div className="flex flex-wrap items-center justify-start gap-2 sm:gap-3">
+                  <div className="flex items-center gap-1.5 sm:gap-2 bg-white px-2.5 py-1.5 border-2 border-black shadow-[2px_2px_0px_#000]">
                     <span className="text-xs font-bold whitespace-nowrap">RD A/c (Last 4 digits):</span>
                     <input 
                       type="text" 
-                      className="flex-1 sm:w-16 border border-gray-300 px-1 text-center font-mono"
+                      className="w-14 sm:w-16 border border-gray-300 px-1 py-0.5 text-center font-mono font-bold text-xs sm:text-sm"
                       value={searchQuery}
                       onChange={(e) => handleSearchChange(e.target.value)}
                     />
                   </div>
                   <button 
                     onClick={() => setShowSummary(!showSummary)}
-                    className="bg-white border-2 border-black px-4 sm:px-6 py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-2 text-sm sm:text-base"
+                    className="bg-white border-2 border-black px-3 sm:px-5 py-1.5 sm:py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-1.5 text-xs sm:text-sm transition-all"
                   >
-                    <FileText size={18} /> <span className="whitespace-nowrap">Summary</span>
+                    <FileText size={16} /> <span className="whitespace-nowrap">Summary</span>
                   </button>
-                  <button className="bg-white border-2 border-black px-4 sm:px-6 py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-2 text-sm sm:text-base">
-                    <Package size={18} /> <span className="whitespace-nowrap">Pack</span>
+                  <button className="bg-white border-2 border-black px-3 sm:px-5 py-1.5 sm:py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-1.5 text-xs sm:text-sm transition-all">
+                    <Package size={16} /> <span className="whitespace-nowrap">Pack</span>
                   </button>
                   <button 
                     onClick={handleDownloadReports}
-                    className="bg-white border-2 border-black px-4 sm:px-6 py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-2 text-sm sm:text-base"
+                    className="bg-white border-2 border-black px-3 sm:px-5 py-1.5 sm:py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-1.5 text-xs sm:text-sm transition-all"
                   >
-                    <FileText size={18} /> <span className="whitespace-nowrap">Reports</span>
+                    <FileText size={16} /> <span className="whitespace-nowrap">Reports</span>
                   </button>
-                  <button onClick={() => setMode('START')} className="bg-white border-2 border-black px-4 sm:px-6 py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-2 text-sm sm:text-base">
-                    <X size={18} /> <span className="whitespace-nowrap">Exit</span>
+                  <button onClick={() => setMode('START')} className="bg-white border-2 border-black px-3 sm:px-5 py-1.5 sm:py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-1.5 text-xs sm:text-sm transition-all">
+                    <X size={16} /> <span className="whitespace-nowrap">Exit</span>
                   </button>
                 </div>
 
-                {/* Big Customer Photo (Aligned to the left below bottom controls) */}
-                <div className="flex justify-start pt-2">
-                  <div className="relative group w-[129px] h-[143px] bg-gray-300 flex items-center justify-center overflow-hidden shadow-[3px_3px_0px_#000]">
+                {/* Lower Section: Customer Photo (Left) and Mobile Summary (Right) */}
+                <div className="flex flex-row items-start justify-between gap-3 pt-1">
+                  {/* Big Customer Photo (Aligned to the left) */}
+                  <div className="relative group w-[115px] h-[130px] sm:w-[129px] sm:h-[143px] bg-gray-300 flex items-center justify-center overflow-hidden shadow-[3px_3px_0px_#000] shrink-0">
                     {selectedAccount ? (
                       <>
                         <img 
@@ -1490,12 +1491,35 @@ function RDApp() {
                       </div>
                     )}
                   </div>
+
+                  {/* Summary on Mobile (< lg screens) */}
+                  {showSummary && (
+                    <div className="block lg:hidden flex-1 min-w-0">
+                      <div className="bg-[#004a75] text-white p-2 sm:p-2.5 shadow-[3px_3px_0px_#000] font-mono text-[11px] sm:text-xs space-y-0.5 max-h-[130px] sm:max-h-[143px] overflow-y-auto custom-scrollbar">
+                        <div className="flex justify-between items-center border-b border-white/20 pb-0.5 text-yellow-300 font-bold gap-1">
+                          <span className="whitespace-nowrap">rt- :</span>
+                          <span className="whitespace-nowrap">{summary.unallocatedTotal.toFixed(2)} / {summary.unallocatedCount}</span>
+                        </div>
+                        {summary.reports.map((rep, i) => (
+                          <div key={i} className="flex justify-between items-center border-b border-white/20 pb-0.5 gap-1">
+                            <span className="whitespace-nowrap">rt-{i + 1} :</span>
+                            <span className="whitespace-nowrap">{rep.total.toFixed(2)} / {rep.count}</span>
+                          </div>
+                        ))}
+                        {summary.unallocatedCount > 0 && (
+                          <p className="text-[9px] text-yellow-200/70 mt-1 leading-tight italic">
+                            * {summary.unallocatedCount} accounts with 0 report cost not allocated
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Right Panel: Summary */}
+              {/* Right Panel: Summary (Desktop lg screens) */}
               {showSummary && (
-                <div className="lg:col-span-2 transition-all duration-300">
+                <div className="hidden lg:block lg:col-span-2 transition-all duration-300">
                   <div className="bg-[#004a75] text-white p-2.5 sm:p-3 shadow-[4px_4px_0px_#000] font-mono text-[13px] sm:text-[14px] lg:text-[15px] space-y-0.5 sm:space-y-1 max-h-[350px] lg:max-h-[450px] overflow-y-auto custom-scrollbar">
                     <div className="flex justify-between items-center border-b border-white/20 pb-0.5 text-yellow-300 font-bold gap-1">
                       <span className="whitespace-nowrap">rt- :</span>
