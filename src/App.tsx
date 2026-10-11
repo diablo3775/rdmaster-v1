@@ -123,13 +123,21 @@ function RDApp() {
   const dragStartHeightRef = useRef(215);
 
   const handleStartResize = (e: React.MouseEvent | React.TouchEvent) => {
+    if ('touches' in e && e.cancelable) {
+      e.preventDefault();
+    }
     setIsDraggingTable(true);
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     dragStartYRef.current = clientY;
     dragStartHeightRef.current = tableHeight;
 
     const onMove = (moveEv: MouseEvent | TouchEvent) => {
-      const currentY = 'touches' in moveEv ? moveEv.touches[0].clientY : moveEv.clientY;
+      if ('touches' in moveEv && moveEv.cancelable) {
+        moveEv.preventDefault();
+      }
+      const currentY = 'touches' in moveEv 
+        ? (moveEv.touches[0]?.clientY ?? dragStartYRef.current) 
+        : moveEv.clientY;
       const delta = currentY - dragStartYRef.current;
       const targetHeight = Math.max(160, Math.min(850, dragStartHeightRef.current + delta));
       setTableHeight(targetHeight);
@@ -141,12 +149,14 @@ function RDApp() {
       window.removeEventListener('mouseup', onEnd);
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
     };
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
-    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
   };
 
   // Auto-scroll table to latest added account
@@ -1328,7 +1338,7 @@ function RDApp() {
                   <div 
                     ref={tableContainerRef} 
                     style={{ height: `${tableHeight}px` }} 
-                    className="overflow-auto border-b border-gray-200 resize-y"
+                    className="overflow-auto border-b border-gray-200"
                   >
                     <table className="w-full text-sm text-left border-collapse">
                       <thead className="bg-gray-100 sticky top-0 z-10 whitespace-nowrap shadow-xs">
@@ -1541,22 +1551,34 @@ function RDApp() {
                     onMouseDown={handleStartResize}
                     onTouchStart={handleStartResize}
                     onDoubleClick={() => setTableHeight(prev => prev > 240 ? 215 : 430)}
+                    style={{ touchAction: 'none' }}
                     className={cn(
-                      "w-full py-1.5 px-3 bg-gray-100 hover:bg-gray-200 active:bg-blue-100 border-b border-gray-300 flex items-center justify-between cursor-row-resize select-none transition-colors",
+                      "w-full py-1.5 px-2.5 sm:px-3 bg-gray-100 hover:bg-gray-200 active:bg-blue-100 border-b border-gray-300 flex items-center justify-between cursor-row-resize select-none touch-none transition-colors",
                       isDraggingTable && "bg-blue-100 border-blue-400"
                     )}
-                    title="Click and drag down to extend accounts list, or double-click to toggle"
+                    title="Click and drag down to extend accounts list, or tap buttons"
                   >
                     <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600">
-                      <GripHorizontal size={14} className="text-gray-400" />
-                      <span>{tableHeight > 240 ? `Extended View (${Math.max(5, Math.round((tableHeight - 32) / 32))} rows)` : '5 Rows View'}</span>
+                      <GripHorizontal size={14} className="text-gray-400 shrink-0" />
+                      <span>{tableHeight > 240 ? `Extended (${Math.max(5, Math.round((tableHeight - 32) / 32))} rows)` : '5 Rows View'}</span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
                       <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
-                        <span className="text-[10px] sm:text-[11px]">↕ Drag to extend list</span>
-                        <GripHorizontal size={15} className="text-gray-400" />
+                        <span className="text-[10px] sm:text-[11px] hidden xs:inline">↕ Drag to extend</span>
+                        <GripHorizontal size={15} className="text-gray-400 shrink-0" />
                       </div>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setTableHeight(prev => Math.min(850, prev + 155));
+                        }}
+                        className="text-[10px] bg-white border border-gray-300 hover:border-gray-500 active:bg-gray-200 text-gray-700 px-1.5 py-0.5 font-bold shadow-xs transition-colors cursor-pointer"
+                        title="Add 5 more rows to view"
+                      >
+                        +5 Rows
+                      </button>
                       {tableHeight > 240 && (
                         <button 
                           type="button"
@@ -1564,10 +1586,10 @@ function RDApp() {
                             e.stopPropagation();
                             setTableHeight(215);
                           }}
-                          className="text-[10px] bg-white border border-gray-300 hover:border-gray-500 text-gray-700 px-1.5 py-0.5 font-bold shadow-xs transition-colors cursor-pointer"
+                          className="text-[10px] bg-white border border-gray-300 hover:border-gray-500 active:bg-gray-200 text-gray-700 px-1.5 py-0.5 font-bold shadow-xs transition-colors cursor-pointer"
                           title="Reset to 5 rows"
                         >
-                          Reset (5 rows)
+                          Reset (5)
                         </button>
                       )}
                     </div>
