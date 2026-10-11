@@ -21,7 +21,7 @@ import {
 import { db, auth } from './firebase';
 import { RDAccount, AppMode, DefaulterFilterParams } from './types';
 import { cn, formatCurrency, calculateRD, calculateMaturityDate, formatDueDate, checkDueAlert, handleFirestoreError, OperationType, sleep } from './lib/utils';
-import { Search, User as UserIcon, LogIn, LogOut, ArrowLeft, FileText, Package, X, AlertCircle, Upload, Loader2, Calendar, ImageOff, Image as ImageIcon } from 'lucide-react';
+import { Search, User as UserIcon, LogIn, LogOut, ArrowLeft, FileText, Package, X, AlertCircle, Upload, Loader2, Calendar, ImageOff, Image as ImageIcon, GripHorizontal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { seedAccounts } from './seed';
 import Papa from 'papaparse';
@@ -116,6 +116,38 @@ function RDApp() {
   const bulkPhotoInputRef = useRef<HTMLInputElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const prevAccountCountRef = useRef(0);
+  const [tableHeight, setTableHeight] = useState<number>(215); // Default ~5 rows visible
+  const [isDraggingTable, setIsDraggingTable] = useState(false);
+  const [summaryListCount, setSummaryListCount] = useState<number>(5); // Default 5 lists (rt-1 to rt-5)
+  const dragStartYRef = useRef(0);
+  const dragStartHeightRef = useRef(215);
+
+  const handleStartResize = (e: React.MouseEvent | React.TouchEvent) => {
+    setIsDraggingTable(true);
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    dragStartYRef.current = clientY;
+    dragStartHeightRef.current = tableHeight;
+
+    const onMove = (moveEv: MouseEvent | TouchEvent) => {
+      const currentY = 'touches' in moveEv ? moveEv.touches[0].clientY : moveEv.clientY;
+      const delta = currentY - dragStartYRef.current;
+      const targetHeight = Math.max(160, Math.min(850, dragStartHeightRef.current + delta));
+      setTableHeight(targetHeight);
+    };
+
+    const onEnd = () => {
+      setIsDraggingTable(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onEnd);
+  };
 
   // Auto-scroll table to latest added account
   useEffect(() => {
@@ -676,9 +708,104 @@ function RDApp() {
     }, 50);
   };
 
+  const sortIdsByReport = (ids: string[], accList: RDAccount[] = accounts): string[] => {
+    const list = ids
+      .map(id => accList.find(a => a.id === id))
+      .filter((a): a is RDAccount => !!a);
+    
+    list.sort((a, b) => {
+      const repA = Math.floor(a.manualReport || 0);
+      const repB = Math.floor(b.manualReport || 0);
+      // Both assigned to reports: sort ascending by numeric report order (1, 2, 3...)
+      if (repA > 0 && repB > 0) return repA - repB;
+      // Assigned reports come first in serial order
+      if (repA > 0) return -1;
+      if (repB > 0) return 1;
+      return 0;
+    });
+    return list.map(a => a.id);
+  };
+
+  const handleSortByReport = () => {
+    setPersistentIds(prev => sortIdsByReport(prev));
+  };
+
+  const handleReportBlur = () => {
+    setPersistentIds(prev => sortIdsByReport(prev));
+  };
+
+  const handlePack = async () => {
+    if (!user || filteredAccounts.length === 0) {
+      setAlertModal({ title: "INFO", message: "No accounts in the list to pack." });
+      return;
+    }
+
+    try {
+      let currentReport = 1;
+      let currentTotal = 0;
+      const updatedAccountsList: RDAccount[] = [];
+
+      for (const acc of filteredAccounts) {
+        const amount = acc.denomination * (acc.rd_ni || 1);
+        
+        // If adding this account exceeds the 20,000 limit, move to the next report
+        if (currentTotal > 0 && (currentTotal + amount) > 20000) {
+          currentReport += 1;
+          currentTotal = 0;
+        }
+
+        const updated = { ...acc, manualReport: currentReport };
+        updatedAccountsList.push(updated);
+        currentTotal += amount;
+      }
+
+      // Batch write to Firestore
+      const batch = writeBatch(db);
+      updatedAccountsList.forEach(acc => {
+        batch.set(doc(db, 'accounts', acc.id), acc);
+      });
+      await batch.commit();
+
+      // Update state and cache
+      const updatedMap = new Map(updatedAccountsList.map(a => [a.id, a]));
+      const newAccounts = accounts.map(a => updatedMap.get(a.id) || a);
+      setAccounts(newAccounts);
+      localStorage.setItem(`rd_accounts_${user.uid}`, JSON.stringify(newAccounts));
+
+      // Reorder persistentIds strictly in serial numeric order
+      const newIds = updatedAccountsList.map(a => a.id);
+      setPersistentIds(newIds);
+
+      setAlertModal({ 
+        title: "PACK COMPLETE", 
+        message: `Successfully packed ${updatedAccountsList.length} accounts into ${currentReport} reports (RT-1 to RT-${currentReport}) in serial numeric order.` 
+      });
+    } catch (error) {
+      console.error("Pack error:", error);
+      setAlertModal({ title: "ERROR", message: "Failed to pack accounts." });
+    }
+  };
+
   const filteredAccounts = persistentIds
     .map(id => accounts.find(a => a.id === id))
     .filter((a): a is RDAccount => !!a);
+
+  // Keep persistentIds in serial numeric report order when accounts change
+  useEffect(() => {
+    if (accounts.length > 0 && persistentIds.length > 0) {
+      const hasAssignedReports = persistentIds.some(id => {
+        const acc = accounts.find(a => a.id === id);
+        return acc && (acc.manualReport || 0) > 0;
+      });
+      if (hasAssignedReports) {
+        setPersistentIds(prev => {
+          const sorted = sortIdsByReport(prev, accounts);
+          const isIdentical = prev.length === sorted.length && prev.every((id, i) => id === sorted[i]);
+          return isIdentical ? prev : sorted;
+        });
+      }
+    }
+  }, [accounts]);
 
   // Fetch Photos for Accounts displayed in the Table
   useEffect(() => {
@@ -711,8 +838,9 @@ function RDApp() {
   }, [filteredAccounts, tablePhotoMap]);
 
   const getReportSummary = (accs: RDAccount[]) => {
-    const maxReport = accs.reduce((max, acc) => Math.max(max, Math.floor(acc.manualReport || 0)), 9);
-    const reports: { total: number; count: number }[] = Array(maxReport).fill(null).map(() => ({ total: 0, count: 0 }));
+    const highestAssigned = accs.reduce((max, acc) => Math.max(max, Math.floor(acc.manualReport || 0)), 0);
+    const totalReports = Math.max(summaryListCount, highestAssigned);
+    const reports: { total: number; count: number }[] = Array(totalReports).fill(null).map(() => ({ total: 0, count: 0 }));
     let unallocatedTotal = 0;
     let unallocatedCount = 0;
     
@@ -720,7 +848,13 @@ function RDApp() {
       const reportNum = Math.floor(acc.manualReport || 0);
       const amount = acc.denomination * (acc.rd_ni || 1);
       
-      if (reportNum >= 1) {
+      if (reportNum >= 1 && reportNum <= totalReports) {
+        reports[reportNum - 1].total += amount;
+        reports[reportNum - 1].count++;
+      } else if (reportNum > totalReports) {
+        while (reports.length < reportNum) {
+          reports.push({ total: 0, count: 0 });
+        }
         reports[reportNum - 1].total += amount;
         reports[reportNum - 1].count++;
       } else {
@@ -741,7 +875,7 @@ function RDApp() {
     const today = new Date();
     const dateStr = `${String(today.getDate()).padStart(2, '0')}-${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}`;
     
-    // Group accounts by report number
+    // Group accounts by report number in ascending order
     const grouped: { [key: number]: RDAccount[] } = {};
     filteredAccounts.forEach(acc => {
       const rNum = Math.floor(acc.manualReport || 0);
@@ -763,19 +897,16 @@ function RDApp() {
     reportNumbers.forEach((rNum, index) => {
       const accs = grouped[rNum];
       
-      // Column width formatters to guarantee perfect character alignment across headers and rows
+      // Column width formatters: NI column right after A/c No, Rd_disc and Rd_pf removed
       const col = {
         sno: (val: string) => val.padStart(3, ' '),
-        acNo: (val: string) => val.padEnd(12, ' '),
-        name: (val: string) => (val.length > 15 ? val.substring(0, 15) : val).padEnd(15, ' '),
-        deno: (val: string) => val.padStart(9, ' '),
+        acNo: (val: string) => val.padEnd(14, ' '),
         ni: (val: string) => val.padStart(3, ' '),
-        total: (val: string) => val.padStart(10, ' '),
-        disc: (val: string) => val.padStart(7, ' '),
-        pf: (val: string) => val.padStart(7, ' '),
+        name: (val: string) => (val.length > 18 ? val.substring(0, 18) : val).padEnd(18, ' '),
+        deno: (val: string) => val.padStart(9, ' '),
       };
 
-      const headerLine = `${col.sno("SNo")}  ${col.acNo("A/c No")}  ${col.name("Name")}  ${col.deno("Deno")}  ${col.ni("NI")}  ${col.total("Total")}  ${col.disc("Disc")}  ${col.pf("PF")}`;
+      const headerLine = `${col.sno("SNo")}  ${col.acNo("A/c No")}  ${col.ni("NI")}  ${col.name("Name")}  ${col.deno("Deno")}`;
       const separator = "-".repeat(headerLine.length);
 
       let reportContent = `RD Transactions Report    Dated ${dateStr} (RT-${rNum})\n`;
@@ -790,20 +921,17 @@ function RDApp() {
         
         const sno = col.sno(String(i + 1));
         const acNo = col.acNo(acc.accountNo);
-        const name = col.name(acc.name);
-        const deno = col.deno(acc.denomination.toFixed(2));
         const ni = col.ni(String(acc.rd_ni || 1));
-        const total = col.total(amount.toFixed(2));
-        const disc = col.disc((acc.rd_disc || 0).toFixed(2));
-        const pf = col.pf((acc.rd_pf || 0).toFixed(2));
+        const name = col.name(acc.name);
+        const deno = col.deno(amount.toFixed(2));
 
-        reportContent += `${sno}  ${acNo}  ${name}  ${deno}  ${ni}  ${total}  ${disc}  ${pf}\n\n`;
+        reportContent += `${sno}  ${acNo}  ${ni}  ${name}  ${deno}\n\n`;
       });
 
-      // Align 'T o t a l' with the Total column
-      // Length before Total column: 3 + 2 + 12 + 2 + 15 + 2 + 9 + 2 + 3 + 2 = 52 characters
-      const totalPrefix = " ".repeat(41) + "T o t a l  ";
-      reportContent += `${totalPrefix}${col.total(totalAmount.toFixed(2))}\n`;
+      // Align 'T o t a l' with the Deno column
+      // Length before Deno column: 3 + 2 + 14 + 2 + 3 + 2 + 18 + 2 = 44 characters
+      const totalPrefix = " ".repeat(33) + "T o t a l  ";
+      reportContent += `${totalPrefix}${col.deno(totalAmount.toFixed(2))}\n`;
       reportContent += `${separator}\n`;
       
       // Bottom account numbers: 2 accounts per line
@@ -1197,27 +1325,35 @@ function RDApp() {
                     </div>
                   </div>
                   
-                  <div ref={tableContainerRef} className="overflow-auto max-h-[195px] sm:max-h-[220px] border-b border-gray-200">
+                  <div 
+                    ref={tableContainerRef} 
+                    style={{ height: `${tableHeight}px` }} 
+                    className="overflow-auto border-b border-gray-200 resize-y"
+                  >
                     <table className="w-full text-sm text-left border-collapse">
                       <thead className="bg-gray-100 sticky top-0 z-10 whitespace-nowrap shadow-xs">
                         <tr className="h-8">
                           <th className="p-1 border text-[14px] text-center w-8">Slno</th>
                           <th className="p-1 border text-[14px] text-center w-9">Photo</th>
                           <th className="p-1 border text-[14px]">Account_no</th>
+                          <th className="p-1 border text-[14px]">Rd_ni</th>
                           <th className="p-1 border text-[14px]">Rd_name</th>
                           <th className="p-1 border text-[14px]">Denom</th>
-                          <th className="p-1 border text-[14px]">Rd_ni</th>
                           <th className="p-1 border text-[14px] whitespace-nowrap">-Due-Date-</th>
+                          <th 
+                            className="p-1 border text-[14px] cursor-pointer hover:bg-gray-200 select-none transition-colors text-center whitespace-nowrap"
+                            onClick={handleSortByReport}
+                            title="Click to sort by rt in serial numeric order"
+                          >
+                            rt ⇅
+                          </th>
+                          <th className="p-1 border text-[14px]">Del</th>
                           <th className="p-1 border text-[14px] whitespace-nowrap text-red-600 font-bold">Alert</th>
                           <th className="p-1 border text-[14px]">Rd_bbt</th>
                           <th className="p-1 border text-[14px]">Rd_tdpf</th>
                           <th className="p-1 border text-[14px]">Rd_mp</th>
                           <th className="p-1 border text-[14px]">Rd_bat</th>
-                          <th className="p-1 border text-[14px]">Report</th>
                           <th className="p-1 border text-[14px]">C58</th>
-                          <th className="p-1 border text-[14px]">Rd_disc</th>
-                          <th className="p-1 border text-[14px]">Rd_pf</th>
-                          <th className="p-1 border text-[14px]">Del</th>
                           <th className="p-1 border text-[14px] whitespace-nowrap">Dt_of_mat</th>
                         </tr>
                       </thead>
@@ -1284,12 +1420,10 @@ function RDApp() {
                                 </div>
                               </td>
                               <td className="p-1 border font-mono">{acc.accountNo}</td>
-                              <td className="p-1 border truncate max-w-[120px]">{acc.name}</td>
-                              <td className="p-1 border text-right">{acc.denomination.toFixed(2)}</td>
                               <td className="p-1 border text-center">
                                 <input 
                                   type="number"
-                                  className="w-8 text-center border-none bg-transparent outline-none"
+                                  className="w-8 text-center border-none bg-transparent outline-none font-bold"
                                   value={acc.rd_ni || 1}
                                   data-col="rd_ni"
                                   data-row={idx}
@@ -1320,28 +1454,23 @@ function RDApp() {
                                   }}
                                 />
                               </td>
+                              <td className="p-1 border truncate max-w-[120px]">{acc.name}</td>
+                              <td className="p-1 border text-right">{acc.denomination.toFixed(2)}</td>
                               <td className="p-1 border text-center whitespace-nowrap">{formatDueDate(acc.nextDueDate)}</td>
-                              <td className="p-1 border text-center whitespace-nowrap">
-                                {alertInfo.isAlert ? (
-                                  <span className="font-extrabold text-red-600 bg-red-100 border border-red-400 px-1.5 py-0.5 rounded text-[11px] uppercase tracking-wide inline-block shadow-sm">
-                                    Alert
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-300 text-xs">-</span>
-                                )}
-                              </td>
-                              <td className="p-1 border text-right">{calc.rd_bbt.toFixed(2)}</td>
-                              <td className="p-1 border text-right">{calc.rd_tdpf.toFixed(2)}</td>
-                              <td className="p-1 border text-center">{calc.rd_mp}</td>
-                              <td className="p-1 border text-right">{calc.rd_bat.toFixed(2)}</td>
-                              <td className="p-1 border text-right">
+                              <td className="p-1 border text-center">
                                 <input 
                                   type="number"
-                                  className="w-14 text-right border-none bg-transparent outline-none font-bold"
+                                  className="w-8 text-center border-none bg-transparent outline-none font-bold"
                                   value={acc.manualReport || 0}
                                   data-col="report"
                                   data-row={idx}
-                                  onKeyDown={(e) => handleKeyDown(e, 'report', idx)}
+                                  onBlur={handleReportBlur}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleReportBlur();
+                                    }
+                                    handleKeyDown(e, 'report', idx);
+                                  }}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     (e.target as HTMLInputElement).select();
@@ -1371,52 +1500,33 @@ function RDApp() {
                                 />
                               </td>
                               <td className="p-1 border text-center">
-                                <input type="checkbox" checked={calc.rd_mp >= 58} readOnly />
-                              </td>
-                              <td className="p-1 border text-center">
-                                <input 
-                                  type="number"
-                                  className="w-10 text-center border-none bg-transparent outline-none"
-                                  value={acc.rd_disc || 0}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={async (e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    const updated = { ...acc, rd_disc: val };
-                                    await updateAccount(updated);
-                                  }}
-                                />
-                              </td>
-                              <td className="p-1 border text-center">
-                                <input 
-                                  type="number"
-                                  className="w-10 text-center border-none bg-transparent outline-none"
-                                  value={acc.rd_pf || 0}
-                                  onClick={(e) => e.stopPropagation()}
-                                  onChange={async (e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    const updated = { ...acc, rd_pf: val };
-                                    await updateAccount(updated);
-                                  }}
-                                />
-                              </td>
-                              <td className="p-1 border text-center">
                                 <button 
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setConfirmModal({
-                                      title: "REMOVE ACCOUNT",
-                                      message: "Remove this account from the current list?",
-                                      onConfirm: () => {
-                                        setPersistentIds(prev => prev.filter(id => id !== acc.id));
-                                        if (selectedAccount?.id === acc.id) setSelectedAccount(null);
-                                        setConfirmModal(null);
-                                      }
-                                    });
+                                    setPersistentIds(prev => prev.filter(id => id !== acc.id));
+                                    if (selectedAccount?.id === acc.id) setSelectedAccount(null);
                                   }}
-                                  className="text-red-600 hover:text-red-800"
+                                  className="text-red-600 hover:text-red-800 p-0.5"
+                                  title="Delete account directly"
                                 >
-                                  <X size={12} />
+                                  <X size={13} />
                                 </button>
+                              </td>
+                              <td className="p-1 border text-center whitespace-nowrap">
+                                {alertInfo.isAlert ? (
+                                  <span className="font-extrabold text-red-600 bg-red-100 border border-red-400 px-1.5 py-0.5 rounded text-[11px] uppercase tracking-wide inline-block shadow-sm">
+                                    Alert
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-300 text-xs">-</span>
+                                )}
+                              </td>
+                              <td className="p-1 border text-right">{calc.rd_bbt.toFixed(2)}</td>
+                              <td className="p-1 border text-right">{calc.rd_tdpf.toFixed(2)}</td>
+                              <td className="p-1 border text-center">{calc.rd_mp}</td>
+                              <td className="p-1 border text-right">{calc.rd_bat.toFixed(2)}</td>
+                              <td className="p-1 border text-center">
+                                <input type="checkbox" checked={calc.rd_mp >= 58} readOnly />
                               </td>
                               <td className="p-1 border text-center whitespace-nowrap">{matDate}</td>
                             </tr>
@@ -1424,6 +1534,43 @@ function RDApp() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Drag Handle to Extend / Collapse List */}
+                  <div 
+                    onMouseDown={handleStartResize}
+                    onTouchStart={handleStartResize}
+                    onDoubleClick={() => setTableHeight(prev => prev > 240 ? 215 : 430)}
+                    className={cn(
+                      "w-full py-1.5 px-3 bg-gray-100 hover:bg-gray-200 active:bg-blue-100 border-b border-gray-300 flex items-center justify-between cursor-row-resize select-none transition-colors",
+                      isDraggingTable && "bg-blue-100 border-blue-400"
+                    )}
+                    title="Click and drag down to extend accounts list, or double-click to toggle"
+                  >
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600">
+                      <GripHorizontal size={14} className="text-gray-400" />
+                      <span>{tableHeight > 240 ? `Extended View (${Math.max(5, Math.round((tableHeight - 32) / 32))} rows)` : '5 Rows View'}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                        <span className="text-[10px] sm:text-[11px]">↕ Drag to extend list</span>
+                        <GripHorizontal size={15} className="text-gray-400" />
+                      </div>
+                      {tableHeight > 240 && (
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTableHeight(215);
+                          }}
+                          className="text-[10px] bg-white border border-gray-300 hover:border-gray-500 text-gray-700 px-1.5 py-0.5 font-bold shadow-xs transition-colors cursor-pointer"
+                          title="Reset to 5 rows"
+                        >
+                          Reset (5 rows)
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1444,7 +1591,11 @@ function RDApp() {
                   >
                     <FileText size={16} /> <span className="whitespace-nowrap">Summary</span>
                   </button>
-                  <button className="bg-white border-2 border-black px-3 sm:px-5 py-1.5 sm:py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-1.5 text-xs sm:text-sm transition-all">
+                  <button 
+                    onClick={handlePack}
+                    className="bg-white border-2 border-black px-3 sm:px-5 py-1.5 sm:py-2 font-bold shadow-[2px_2px_0px_#000] hover:bg-gray-100 flex items-center gap-1.5 text-xs sm:text-sm transition-all"
+                    title="Pack accounts into reports serially up to 20,000 limit"
+                  >
                     <Package size={16} /> <span className="whitespace-nowrap">Pack</span>
                   </button>
                   <button 
@@ -1495,17 +1646,37 @@ function RDApp() {
                   {/* Summary on Mobile (< lg screens) */}
                   {showSummary && (
                     <div className="block lg:hidden flex-1 min-w-0">
-                      <div className="bg-[#004a75] text-white p-2 sm:p-2.5 shadow-[3px_3px_0px_#000] font-mono text-[11px] sm:text-xs space-y-0.5 max-h-[130px] sm:max-h-[143px] overflow-y-auto custom-scrollbar">
-                        <div className="flex justify-between items-center border-b border-white/20 pb-0.5 text-yellow-300 font-bold gap-1">
+                      <div className="bg-[#004a75] text-white p-2 sm:p-2.5 shadow-[3px_3px_0px_#000] font-mono text-[11px] sm:text-xs space-y-0.5 max-h-[140px] sm:max-h-[160px] overflow-y-auto custom-scrollbar">
+                        <div className="flex items-center gap-1.5 border-b border-white/20 pb-0.5 text-yellow-300 font-bold">
                           <span className="whitespace-nowrap">rt- :</span>
                           <span className="whitespace-nowrap">{summary.unallocatedTotal.toFixed(2)} / {summary.unallocatedCount}</span>
                         </div>
                         {summary.reports.map((rep, i) => (
-                          <div key={i} className="flex justify-between items-center border-b border-white/20 pb-0.5 gap-1">
+                          <div key={i} className="flex items-center gap-1.5 border-b border-white/20 pb-0.5">
                             <span className="whitespace-nowrap">rt-{i + 1} :</span>
                             <span className="whitespace-nowrap">{rep.total.toFixed(2)} / {rep.count}</span>
                           </div>
                         ))}
+                        <div className="pt-1 flex items-center justify-between text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setSummaryListCount(prev => prev + 1)}
+                            className="text-yellow-300 hover:text-white underline font-semibold cursor-pointer"
+                            title="Add next report list"
+                          >
+                            + Extend list (rt-{summary.reports.length + 1})
+                          </button>
+                          {summaryListCount > 5 && (
+                            <button
+                              type="button"
+                              onClick={() => setSummaryListCount(5)}
+                              className="text-gray-300 hover:text-white text-[9px] cursor-pointer"
+                              title="Reset to 5 lists"
+                            >
+                              Reset (5)
+                            </button>
+                          )}
+                        </div>
                         {summary.unallocatedCount > 0 && (
                           <p className="text-[9px] text-yellow-200/70 mt-1 leading-tight italic">
                             * {summary.unallocatedCount} accounts with 0 report cost not allocated
@@ -1520,17 +1691,37 @@ function RDApp() {
               {/* Right Panel: Summary (Desktop lg screens) */}
               {showSummary && (
                 <div className="hidden lg:block lg:col-span-2 transition-all duration-300">
-                  <div className="bg-[#004a75] text-white p-2.5 sm:p-3 shadow-[4px_4px_0px_#000] font-mono text-[13px] sm:text-[14px] lg:text-[15px] space-y-0.5 sm:space-y-1 max-h-[350px] lg:max-h-[450px] overflow-y-auto custom-scrollbar">
-                    <div className="flex justify-between items-center border-b border-white/20 pb-0.5 text-yellow-300 font-bold gap-1">
+                  <div className="bg-[#004a75] text-white p-2.5 sm:p-3 shadow-[4px_4px_0px_#000] font-mono text-[13px] sm:text-[14px] lg:text-[15px] space-y-0.5 sm:space-y-1 max-h-[350px] lg:max-h-[450px] overflow-y-auto custom-scrollbar w-fit min-w-[210px]">
+                    <div className="flex items-center gap-1.5 border-b border-white/20 pb-0.5 text-yellow-300 font-bold">
                       <span className="whitespace-nowrap">rt- :</span>
                       <span className="whitespace-nowrap">{summary.unallocatedTotal.toFixed(2)} / {summary.unallocatedCount}</span>
                     </div>
                     {summary.reports.map((rep, i) => (
-                      <div key={i} className="flex justify-between items-center border-b border-white/20 pb-0.5 gap-1">
+                      <div key={i} className="flex items-center gap-1.5 border-b border-white/20 pb-0.5">
                         <span className="whitespace-nowrap">rt-{i + 1} :</span>
                         <span className="whitespace-nowrap">{rep.total.toFixed(2)} / {rep.count}</span>
                       </div>
                     ))}
+                    <div className="pt-1.5 flex items-center justify-between text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setSummaryListCount(prev => prev + 1)}
+                        className="text-yellow-300 hover:text-white underline font-semibold cursor-pointer"
+                        title="Add next report list"
+                      >
+                        + Extend list (rt-{summary.reports.length + 1})
+                      </button>
+                      {summaryListCount > 5 && (
+                        <button
+                          type="button"
+                          onClick={() => setSummaryListCount(5)}
+                          className="text-gray-300 hover:text-white text-[10px] cursor-pointer"
+                          title="Reset to 5 lists"
+                        >
+                          Reset (5)
+                        </button>
+                      )}
+                    </div>
                     {summary.unallocatedCount > 0 && (
                       <p className="text-[10px] sm:text-[11px] text-yellow-200/70 mt-2 leading-tight italic">
                         * {summary.unallocatedCount} accounts with 0 report cost not allocated
