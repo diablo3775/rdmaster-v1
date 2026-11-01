@@ -88,6 +88,123 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
+interface ReportInputCellProps {
+  acc: RDAccount;
+  idx: number;
+  handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, col: string, rowIdx: number) => void;
+  checkReportLimit: (reportNum: number, amount: number, currentAccountId: string) => boolean;
+  updateAccount: (acc: RDAccount) => Promise<void>;
+  handleReportBlur: () => void;
+  setAlertModal: (modal: { title: string; message: string } | null) => void;
+}
+
+const ReportInputCell: React.FC<ReportInputCellProps> = ({
+  acc,
+  idx,
+  handleKeyDown,
+  checkReportLimit,
+  updateAccount,
+  handleReportBlur,
+  setAlertModal,
+}) => {
+  const currentAssigned = acc.manualReport || 0;
+  const [val, setVal] = useState<string>(String(currentAssigned));
+  const [isFocused, setIsFocused] = useState(false);
+  const isCommittingRef = useRef(false);
+
+  // Sync external changes (e.g. from Auto-Pack or Reset) when not actively editing
+  useEffect(() => {
+    if (!isFocused) {
+      setVal(String(acc.manualReport || 0));
+    }
+  }, [acc.manualReport, isFocused]);
+
+  const commitValue = async (candidateValue: string) => {
+    if (isCommittingRef.current) return;
+    isCommittingRef.current = true;
+    try {
+      const trimmed = candidateValue.trim();
+      if (trimmed === '') {
+        if ((acc.manualReport || 0) !== 0) {
+          await updateAccount({ ...acc, manualReport: 0 });
+          handleReportBlur();
+        }
+        setVal('0');
+        return;
+      }
+
+      const reportNum = parseInt(trimmed, 10);
+      if (isNaN(reportNum) || reportNum < 0 || reportNum > 99) {
+        setAlertModal({ 
+          title: "INVALID REPORT", 
+          message: "Report number must be between 1 and 99." 
+        });
+        setVal(String(acc.manualReport || 0));
+        return;
+      }
+
+      const existingReport = acc.manualReport || 0;
+      if (reportNum === existingReport) {
+        setVal(String(reportNum));
+        handleReportBlur();
+        return;
+      }
+
+      if (reportNum > 0) {
+        const amount = acc.denomination * (acc.rd_ni || 1);
+        if (!checkReportLimit(reportNum, amount, acc.id)) {
+          setAlertModal({ 
+            title: "LIMIT EXCEEDED", 
+            message: `Report RT-${reportNum} has reached its 20,000.00 limit. Please assign to the next available report (RT-${reportNum + 1}).` 
+          });
+          setVal(String(existingReport));
+          return;
+        }
+      }
+
+      setVal(String(reportNum));
+      await updateAccount({ ...acc, manualReport: reportNum });
+      handleReportBlur();
+    } finally {
+      isCommittingRef.current = false;
+    }
+  };
+
+  return (
+    <input 
+      type="number"
+      min={0}
+      max={99}
+      className="w-10 text-center border-none bg-transparent outline-none font-bold"
+      value={val}
+      data-col="report"
+      data-row={idx}
+      onFocus={() => {
+        setIsFocused(true);
+      }}
+      onBlur={async (e) => {
+        setIsFocused(false);
+        await commitValue(e.target.value);
+      }}
+      onKeyDown={async (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+          return;
+        }
+        handleKeyDown(e, 'report', idx);
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        (e.target as HTMLInputElement).select();
+      }}
+      onChange={(e) => {
+        setVal(e.target.value);
+      }}
+    />
+  );
+};
+
 function RDApp() {
   const [user, setUser] = useState<User | null>(null);
   const [mode, setMode] = useState<AppMode>('START');
@@ -1468,45 +1585,14 @@ function RDApp() {
                               <td className="p-1 border text-right">{acc.denomination.toFixed(2)}</td>
                               <td className="p-1 border text-center whitespace-nowrap">{formatDueDate(acc.nextDueDate)}</td>
                               <td className="p-1 border text-center">
-                                <input 
-                                  type="number"
-                                  className="w-8 text-center border-none bg-transparent outline-none font-bold"
-                                  value={acc.manualReport || 0}
-                                  data-col="report"
-                                  data-row={idx}
-                                  onBlur={handleReportBlur}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      handleReportBlur();
-                                    }
-                                    handleKeyDown(e, 'report', idx);
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    (e.target as HTMLInputElement).select();
-                                  }}
-                                  onChange={async (e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    const reportNum = Math.floor(val);
-                                    const amount = acc.denomination * (acc.rd_ni || 1);
-
-                                    if (reportNum > 0) {
-                                      if (reportNum > 99) {
-                                        setAlertModal({ title: "INVALID REPORT", message: "Report number must be between 1 and 99." });
-                                        return;
-                                      }
-                                      if (!checkReportLimit(reportNum, amount, acc.id)) {
-                                        setAlertModal({ 
-                                          title: "LIMIT EXCEEDED", 
-                                          message: `Report RT-${reportNum} has reached its 20,000.00 limit. Please assign to the next available report (RT-${reportNum + 1}).` 
-                                        });
-                                        return;
-                                      }
-                                    }
-
-                                    const updated = { ...acc, manualReport: val };
-                                    await updateAccount(updated);
-                                  }}
+                                <ReportInputCell
+                                  acc={acc}
+                                  idx={idx}
+                                  handleKeyDown={handleKeyDown}
+                                  checkReportLimit={checkReportLimit}
+                                  updateAccount={updateAccount}
+                                  handleReportBlur={handleReportBlur}
+                                  setAlertModal={setAlertModal}
                                 />
                               </td>
                               <td className="p-1 border text-center">
